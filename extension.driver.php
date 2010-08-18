@@ -18,7 +18,7 @@
 			return array(
 				array(
 					'location' => 'System',
-					'name'	=> 'Campaign Monitor',
+					'name'	=> __('Campaign Monitor'),
 					'link'	=> '/cmadmin/'
 				)
 			);
@@ -86,6 +86,45 @@
 			$div->appendChild($label);
 			
 			$group->appendChild($div);
+			
+			$div = new XMLElement('div');
+			$div->setAttribute('class', 'group');
+			
+			$label = Widget::Label(__('Campaign Name Prefix'));
+			$label->appendChild(Widget::Input('settings[campaign_monitor][campaign_name]', Symphony::Configuration()->get('campaign_name', 'campaign_monitor')));
+			$div->appendChild($label);
+			
+			$label = Widget::Label(__('Sender'));
+			$label->appendChild(Widget::Input('settings[campaign_monitor][sender_name]', Symphony::Configuration()->get('sender_name', 'campaign_monitor')));
+			$div->appendChild($label);
+			
+			$group->appendChild($div);
+			
+			$div = new XMLElement('div');
+			$div->setAttribute('class', 'group');
+			
+			$label = Widget::Label(__('Sender Email'));
+			$label->appendChild(Widget::Input('settings[campaign_monitor][sender_email]', Symphony::Configuration()->get('sender_email', 'campaign_monitor')));
+			$div->appendChild($label);
+			
+			$label = Widget::Label(__('Reply To Email'));
+			$label->appendChild(Widget::Input('settings[campaign_monitor][reply_email]', Symphony::Configuration()->get('reply_email', 'campaign_monitor')));
+			$div->appendChild($label);
+			
+			$group->appendChild($div);
+			
+			$div = new XMLElement('div');
+			$div->setAttribute('class', 'group');
+			
+			$label = Widget::Label(__('HTML Content'));
+			$label->appendChild(Widget::Input('settings[campaign_monitor][html_content]', Symphony::Configuration()->get('html_content', 'campaign_monitor')));
+			$div->appendChild($label);
+			
+			$label = Widget::Label(__('Plain Text Content'));
+			$label->appendChild(Widget::Input('settings[campaign_monitor][text_content]', Symphony::Configuration()->get('text_content', 'campaign_monitor')));
+			$div->appendChild($label);
+			
+			$group->appendChild($div);
 										
 			$context['wrapper']->appendChild($group);
 						
@@ -106,92 +145,55 @@
 
 		}
 		
+		private function __sendEmailFindFormValue($needle, $haystack, $discard_field_name=true, $default=NULL, $collapse=true){
+
+			if(preg_match('/^(fields\[[^\]]+\],?)+$/i', $needle)){
+				$parts = preg_split('/\,/i', $needle, -1, PREG_SPLIT_NO_EMPTY);
+				$parts = array_map('trim', $parts);
+
+				$stack = array();
+				foreach($parts as $p){ 
+					$field = str_replace(array('fields[', ']'), '', $p);
+					($discard_field_name ? $stack[] = $haystack[$field] : $stack[$field] = $haystack[$field]);
+				}
+
+				if(is_array($stack) && !empty($stack)) return ($collapse ? implode(' ', $stack) : $stack);
+				else $needle = NULL;
+			}
+
+			$needle = trim($needle);
+			if(empty($needle)) return $default;
+
+			return $needle;
+
+		}
+		
 		public function createNewCampaign(array $context=array()){
 			
 			if(!@in_array('campaign_monitor-create-campaign-filter', $context['event']->eParamFILTERS)) return;
 			
 			require_once(EXTENSIONS . '/campaign_monitor/lib/cmapi/CMBase.php');
 			
+			//Options from Preferences
 			$api_key = $context['parent']->Configuration->get('api_key', 'campaign_monitor');
 			$client_id = $context['parent']->Configuration->get('client_id', 'campaign_monitor');
 			$list_id = array($context['parent']->Configuration->get('list_id', 'campaign_monitor'));
-			$subscriber_segments = '';
-			$campaign_name = 'Newsletter';
-			$subject = 'Newsletter';
-			$from_name = 'Neil Albrock';
-			$from_email = 'neil@atomised.coop';
-			$reply_email = 'neil@atomised.coop';
-			$html_content = '';
-			$text_content = '';
+			$from_name = $context['parent']->Configuration->get('sender_name', 'campaign_monitor');
+			$from_email = $context['parent']->Configuration->get('sender_email', 'campaign_monitor');
+			$reply_email = $context['parent']->Configuration->get('reply_email', 'campaign_monitor');
+			//Options from Prefs + Event
+			$campaign_name = $context['parent']->Configuration->get('campaign_name', 'campaign_monitor') . $_POST['fields']['issue'];
+			$subject = $context['parent']->Configuration->get('campaign_name', 'campaign_monitor') . $_POST['fields']['issue'];
+			$html_content = $context['parent']->Configuration->get('html_content', 'campaign_monitor') . $_POST['fields']['issue'];
+			$text_content = $context['parent']->Configuration->get('text_content', 'campaign_monitor'). $_POST['fields']['issue'];
 			
 			$cm = new CampaignMonitor($api_key);
 			
 			//Create the new campaign
 			$campaignid = $cm->campaignCreate($client_id,$campaign_name,$subject,$from_name,$from_email,$reply_email,$html_content,$text_content,$list_id,'');
 			
-			$result = $cm->campaignSend($campaignid,$from_email,date("Y-m-d H:i:s"));
+			$result = $cm->campaignSend($campaignid,$from_email,date("Y-m-d H:i:s"));			
 			
-			/*$fields = $_POST['send-email'];
-			
-			$fields['recipient'] = $this->__sendEmailFindFormValue($fields['recipient'], $_POST['fields'], true);
-			$fields['recipient'] = preg_split('/\,/i', $fields['recipient'], -1, PREG_SPLIT_NO_EMPTY);
-			$fields['recipient'] = array_map('trim', $fields['recipient']);
-
-			$fields['recipient'] = Symphony::Database()->fetch("SELECT `email`, CONCAT(`first_name`, ' ', `last_name`) AS `name` FROM `tbl_authors` WHERE `username` IN ('".@implode("', '", $fields['recipient'])."') ");
-
-			$fields['subject'] = $this->__sendEmailFindFormValue($fields['subject'], $context['fields'], true, __('[Symphony] A new entry was created on %s', array(Symphony::Configuration()->get('sitename', 'general'))));
-			$fields['body'] = $this->__sendEmailFindFormValue($fields['body'], $context['fields'], false, NULL, false);
-			$fields['sender-email'] = $this->__sendEmailFindFormValue($fields['sender-email'], $context['fields'], true, 'noreply@' . parse_url(URL, PHP_URL_HOST));
-			$fields['sender-name'] = $this->__sendEmailFindFormValue($fields['sender-name'], $context['fields'], true, 'Symphony');
-			$fields['from'] = $this->__sendEmailFindFormValue($fields['from'], $context['fields'], true, $fields['sender-email']);		
-						
-			$section = Symphony::Database()->fetchRow(0, "SELECT * FROM `tbl_sections` WHERE `id` = ".$context['event']->getSource()." LIMIT 1");
-			
-			$edit_link = URL.'/symphony/publish/'.$section['handle'].'/edit/'.$context['entry_id'].'/';
-
-			$body = __('Dear <!-- RECIPIENT NAME -->,') . General::CRLF . General::CRLF . __('This is a courtesy email to notify you that an entry was created on the %1$s section. You can edit the entry by going to: %2$s', array($section['name'], $edit_link)). General::CRLF . General::CRLF;
-
-			if(is_array($fields['body'])){
-				foreach($fields['body'] as $field_handle => $value){
-					$body .= "=== $field_handle ===" . General::CRLF . General::CRLF . $value . General::CRLF . General::CRLF;
-				}
-			}
-
-			else $body .= $fields['body'];
-
-			$errors = array();
-
-			if(!is_array($fields['recipient']) || empty($fields['recipient'])){
-				$context['messages'][] = array('smtp-email-library-send-email-filter', false, __('No valid recipients found. Check send-email[recipient] field.'));
-			}
-
-			else{
-				
-				foreach($fields['recipient'] as $r){
-					
-					$email = new LibraryEmail;
-
-					$email->to = vsprintf('%2$s <%1$s>', array_values($r));
-					$email->from = sprintf('%s <%s>', $fields['sender-name'], $fields['sender-email']);
-					$email->subject = $fields['subject'];
-					$email->message = str_replace('<!-- RECIPIENT NAME -->', $r['name'], $body);
-					$email->setHeader('Reply-To', $fields['from']);
-
-					try{
-						$email->send();
-					}
-					catch(Exception $e){
-						$errors[] = $email;
-					}
-
-				}
-
-				if(!empty($errors)){
-					$context['messages'][] = array('smtp-email-library-send-email-filter', false, 'The following email addresses were problematic: ' . General::sanitize(implode(', ', $errors)));
-				}
-
-				else $context['messages'][] = array('smtp-email-library-send-email-filter', true);
-			}*/
 		}
 				
 	}

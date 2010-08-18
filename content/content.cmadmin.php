@@ -5,7 +5,7 @@
 	
 	Class contentExtensionCampaign_MonitorCmadmin extends AdministrationPage{
 		
-		function __viewIndex(){				
+		public function view(){				
 			//Page options
 			$this->setPageType('table');
 			$this->setTitle(__('%1$s &ndash; %2$s', array(__('Symphony'), __('Campaign Monitor Subscribers'))));
@@ -42,17 +42,32 @@
 								
 			} else {
 				
-				foreach($subscribers as $subscriber){
+				if (is_array($subscribers[0])) { //Check if the subscriber list is longer than one, in which case it's an array of arrays
+				
+					foreach($subscribers as $subscriber){
 					
-					$td1 = Widget::TableData($subscriber["Name"]);
-					$td2 = Widget::TableData($subscriber["EmailAddress"]);
-					$td2->appendChild(Widget::Input('items['.$subscriber["EmailAddress"].']', 'on', 'checkbox'));
-					$td3 = Widget::TableData(date("d F Y H:i", strtotime($subscriber["Date"])));
-					$td4 = Widget::TableData($subscriber["State"]);
+						$td1 = Widget::TableData($subscriber["Name"]);
+						$td2 = Widget::TableData($subscriber["EmailAddress"]);
+						$td2->appendChild(Widget::Input('items['.$subscriber["EmailAddress"].']', 'on', 'checkbox'));
+						$td3 = Widget::TableData(date("d F Y H:i", strtotime($subscriber["Date"])));
+						$td4 = Widget::TableData($subscriber["State"]);
+
+						//Add table data to row and body
+						$aTableBody[] = Widget::TableRow(array($td1, $td2, $td3, $td4));		
+
+					}
+				
+				} else { //Single subscriber
+					
+					$td1 = Widget::TableData($subscribers["Name"]);
+					$td2 = Widget::TableData($subscribers["EmailAddress"]);
+					$td2->appendChild(Widget::Input('items['.$subscribers["EmailAddress"].']', 'on', 'checkbox'));
+					$td3 = Widget::TableData(date("d F Y H:i", strtotime($subscribers["Date"])));
+					$td4 = Widget::TableData($subscribers["State"]);
 
 					//Add table data to row and body
-					$aTableBody[] = Widget::TableRow(array($td1, $td2, $td3, $td4));		
-
+					$aTableBody[] = Widget::TableRow(array($td1, $td2, $td3, $td4));
+					
 				}
 				
 			}
@@ -71,7 +86,7 @@
 			
 			$options = array(
 				array(NULL, false, __('With Selected...')),
-				array('unsubscribe', false, __('Unsubscribe'), 'confirm'),
+				array('unsubscribe', false, __('Unsubscribe')),
 			);
 
 			$tableActions->appendChild(Widget::Select('with-selected', $options));
@@ -84,27 +99,25 @@
 		function __actionIndex(){
 			$checked  = @array_keys($_POST['items']);
 			
-			if(isset($_POST['with-selected']) && is_array($checked) && !empty($checked)){
+			if(is_array($checked) && !empty($checked)){
 
 				//Get Campaign Monitor preferences
 				$api_key = $this->_Parent->Configuration->get('api_key', 'campaign_monitor');
+				$list_id = $this->_Parent->Configuration->get('list_id', 'campaign_monitor');
 				//New Campaign Monitor instance
 				$cm = new CampaignMonitor($api_key);
-				
-				$action = $_POST['with-selected'];
 
-				switch($action){
+				switch($_POST['with-selected']){
 
 					case 'unsubscribe':
 
 						foreach($checked as $subscriber){
-							$result = $cm->subscriberUnsubscribe($subscriber);
+							$result = $cm->subscriberUnsubscribe($subscriber,$list_id,false);
 						}
+						redirect($this->_Parent->getCurrentPageURL());
 						break;
 						
-				}		
-
-				redirect($this->_Parent->getCurrentPageURL());
+				}
 			}			
 		}
 		
